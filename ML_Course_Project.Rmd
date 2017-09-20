@@ -1,0 +1,122 @@
+---
+title: "Practical Machine Learning - Prediction Assignment Writeup"
+author: "Cyril Levasseur"
+date: '2017-09-20'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r include = TRUE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+
+## 1. Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## 2. Goal
+
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. This report explains the model that is built, and used on a test set to predict 20 different cases.
+
+## 3. Data loading
+
+```{r}
+library(caret)
+library(rpart)
+set.seed(52)
+
+TrainUrl <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+TestUrl <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+
+DataTraining <- read.csv(file = TrainUrl)
+DataTest <- read.csv(file = TestUrl)
+
+dim(DataTraining)
+dim(DataTest)
+```
+Both sets have 160 variables.
+
+## 4. Data partitioning
+
+```{r}
+InTrain <- createDataPartition(DataTraining$classe, p = 0.7, list = FALSE)
+TrainSet <- DataTraining[InTrain, ]
+TestSet  <- DataTraining[-InTrain, ]
+dim(TrainSet)
+dim(TestSet)
+```
+
+## 5. Data cleaning
+
+```{r}
+str(TrainSet)
+
+# Removing of variables linked to the user
+TrainSet <- TrainSet[, -(1:5)]
+TestSet  <- TestSet[, -(1:5)]
+
+# Replace #DIV/0! by NA's
+TrainSet[TrainSet == "#DIV/0!"] <- NA
+TestSet[TestSet == "#DIV/0!"] <- NA
+
+# Removing of variables with lots of NA's
+NaToRemove <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.95
+TrainSet <- TrainSet[, NaToRemove==FALSE]
+TestSet  <- TestSet[, NaToRemove==FALSE]
+dim(TrainSet)
+dim(TestSet)
+
+# Removing variables with nearly Zero Variance
+NZV <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -NZV]
+TestSet  <- TestSet[, -NZV]
+dim(TrainSet)
+dim(TestSet)
+```
+
+==> We finally keep 53 variables for the modeling.
+
+## 6. Prediction Model
+
+We are going to use 2 different algorithms, and choose the one with the best result on the test set for the final prediction of the 20 cases :
+
+1/ Random Forest
+2/ Generalized Boosted Model
+
+### Random Forest
+```{r}
+MyControl <- trainControl(method="cv", number=3, verboseIter=FALSE)
+ModFitRF <- train(classe ~ .,
+                  data = TrainSet,
+                  method = "rf",
+                  trControl = MyControl,
+                  verbose = FALSE)
+PredictRF <- predict(ModFitRF, newdata = TestSet)
+confusionMatrix(PredictRF, TestSet$classe)
+```
+
+### Generalized Boosted Model
+```{r}
+ModFitGBM <- train(classe ~ .,
+                  data = TrainSet,
+                  method = "gbm",
+                  trControl = MyControl,
+                  verbose = FALSE)
+PredictGBM <- predict(ModFitGBM, newdata = TestSet)
+confusionMatrix(PredictGBM, TestSet$classe)
+```
+
+Accuracy seems to be better with the model fitted with random forest algorithm -> that's the model we are going to use for the prediction of the 20 test cases.
+
+
+## 7. Final test prediction
+
+```{r}
+PredictTest <- predict(ModFitRF, newdata = DataTest)
+PredictTest
+```
+
+
+
